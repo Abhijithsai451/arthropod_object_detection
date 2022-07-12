@@ -1,9 +1,11 @@
-import keras
+
 import tensorflow as tf
+from tensorflow import keras
 import logging
 
-from keras.layers import Conv2D, MaxPooling2D, Rescaling, Normalization, Dense, Dropout, Flatten, BatchNormalization
-from tensorflow.python.keras import Input
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D, Rescaling, Dense, Dropout, Flatten, BatchNormalization, InputLayer
+
 
 import config
 
@@ -62,6 +64,7 @@ for image, label in train_data:
     data_shape = image.shape
     logging.info(image.shape)
     logging.info(label.shape)
+    print(label)
     break
 
 logging.info("partitioned the validation data to test and validation splits")
@@ -70,12 +73,12 @@ logging.info("partitioned the validation data to test and validation splits")
 
 class create_model(tf.keras.Model):
     logging.info("Creating a model class")
-    def __init__(self,image_shape, c):
-        super().__init__()
+    def __init__(self,image_shape, num_classes):
+        super(create_model,self).__init__()
         self.image_shape = image_shape
         self.num_classes = num_classes
 
-        self.input_layer = Input(shape = image_shape)
+        self.input_layer = InputLayer(input_shape = image_shape)
         self.rescale = Rescaling(scale = 1/.255)
         self.conv1 = Conv2D(128, (3,3), input_shape=self.image_shape, activation='relu')
         self.conv2 = Conv2D(64, (3,3), input_shape=self.image_shape, activation='relu')
@@ -83,49 +86,54 @@ class create_model(tf.keras.Model):
         self.conv4 = Conv2D(16, (3,3), input_shape=self.image_shape, activation='relu')
         self.conv5 = Conv2D(8, (3,3), input_shape=self.image_shape, activation='relu')
         self.maxpool = MaxPooling2D()
-        self.Norm =  BatchNormalization()
+        self.norm =  BatchNormalization()
         self.dense1 = Dense(8,activation='relu')
-        self.dense2 = Dense(self.num_classes)
-        self.flat = Flatten()
+        self.dense2 = Dense(1)
+        self.flatten = Flatten()
         self.dropout = Dropout(0.25)
 
     def call(self, input_data):
         x = self.input_layer(input_data)
-        x = self.rescale(input_shape = (config.image_size, 3))(x)
-        x = self.conv1()(x)
-        x = self.maxpool()(x)
-        x = self.conv2()(x)
-        x = self.maxpool()(x)
-        x = self.conv3()(x)
-        x = self.maxpool()(x)
-        x = self.conv4()(x)
-        x = self.maxpool()(x)
-        x = self.conv5()(x)
-        x = self.maxpool()(x)
-        x = self.flat(x)
-        x= self.dropout()(x)
-        x = self.dense1()
-        logits = self.dense2()
-
+        x = self.rescale(x)
+        x = self.conv1(x)
+        x = self.maxpool(x)
+        x = self.conv2(x)
+        x = self.maxpool(x)
+        x = self.conv3(x)
+        x = self.maxpool(x)
+        x = self.conv4(x)
+        x = self.maxpool(x)
+        x = self.conv5(x)
+        x = self.maxpool(x)
+        x = self.norm(x)
+        x= self.dropout(x)
+        x = self.flatten(x)
+        x = self.dense1(x)
+        logits = self.dense2(x)
+        print(logits.shape)
         return logits
 
 model = create_model(data_shape, len(class_names))
+
 logging.info("Created the Model")
 callbacks = [
     keras.callbacks.ModelCheckpoint("save_at_{epoch}.h5"),
 ]
 logging.info("Training the model on data: 'train_data' ")
 optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3)
+
+cross_entropy = keras.losses.SparseCategoricalCrossentropy()
 epochs = 3
+#model.fit(train_data,validation_data=val_data,epochs=epochs)
+
 for epoch in range(epochs):
     with tf.GradientTape() as Tape:
         for step, (images, labels) in enumerate(train_data):
-
             y_pred = model(images)
-            loss = keras.losses.mean_squared_error(labels,y_pred)
+            loss = cross_entropy(labels,y_pred)
             gradients = Tape.gradient(loss,model.trainable_weights)
             optimizer.apply_gradients(zip(gradients, model.trainable_weights))
-            if step % 200 == 0:
+            if step % 2 == 0:
                 print(
                     "Training loss (for one batch) at step %d: %.4f"
                     % (step, float(loss))
